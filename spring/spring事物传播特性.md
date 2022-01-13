@@ -5,7 +5,7 @@ category: /java/spring/2022-01
 renderNumberedHeading: true
 grammar_cjkRuby: true
 ---
-2022年01月13日 10:33
+2022-01-13 10:33
 
 * [PROPAGATION_MANDATORY 支持当前事物](#propagation_mandatory-支持当前事物)
 * [PROPAGATION_REQUIRED 支持当前事物](#propagation_required-支持当前事物)
