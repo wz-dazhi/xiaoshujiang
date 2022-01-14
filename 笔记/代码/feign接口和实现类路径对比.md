@@ -13,7 +13,7 @@ public class CompareTest {
 
     @Test
     public void test() throws Exception {
-        scanPackage("cn.hsa.cep.tpc.blncmcs");
+        scanPackage("com.xxx.xxx");
         System.out.println("一共" + count + "类.");
     }
 
@@ -34,51 +34,56 @@ public class CompareTest {
     }
 
     private void doCompare(Class<?> serviceImplClass) {
-        if (serviceImplClass.getInterfaces().length == 0) {
-            System.out.println("class 没有实现接口: " + serviceImplClass.getName());
-            return;
-        }
-        Class<?> serviceInterface = serviceImplClass.getInterfaces()[0];
-
-        HsafRestPath implHsafRestPath = serviceImplClass.getAnnotation(HsafRestPath.class);
-        FeignClient feignClient = serviceInterface.getAnnotation(FeignClient.class);
-        if (verifyClassAnnotation(implHsafRestPath, feignClient)) {
-            System.err.println("实现类: " + serviceImplClass.getName() + ", HsafRestPath: " + implHsafRestPath);
-            System.err.println("接口: " + serviceInterface.getName() + ", FeignClient: " + feignClient);
+        Class<?> serviceInterface = findCandidateInterface(serviceImplClass);
+        if (serviceInterface == null) {
             return;
         }
 
-        String implPath = implHsafRestPath.value().startsWith("tpc") ? classPath(implHsafRestPath.value()) : "tpc/" + classPath(implHsafRestPath.value());
-        String interfacePath = "".equals(feignClient.path()) ? "" : classPath(feignClient.path());
-
-        Method[] implMethods = serviceImplClass.getMethods();
         boolean isError = false;
-        for (Method m : implMethods) {
-            HsafRestPath implMethodHsafRestPath = m.getAnnotation(HsafRestPath.class);
-
-            Method interfaceMethod;
+        FeignClient feignClient = serviceInterface.getAnnotation(FeignClient.class);
+        HsafRestPath implHsafRestPath = serviceImplClass.getAnnotation(HsafRestPath.class);
+        if (null == implHsafRestPath) {
+            System.err.println("实现类: " + serviceImplClass.getName() + ", HsafRestPath: null");
+            System.err.println("接口: " + serviceInterface.getName() + ", FeignClient: " + feignClient);
+            isError = true;
+        } else {
             try {
-                interfaceMethod = serviceInterface.getMethod(m.getName(), m.getParameterTypes());
-            } catch (NoSuchMethodException | SecurityException ignored) {
-                continue;
-            }
-            RequestMapping requestMapping = AnnotatedElementUtils.findMergedAnnotation(interfaceMethod, RequestMapping.class);
-            if (implMethodHsafRestPath == null || requestMapping == null) {
-                System.err.println("实现类: " + serviceImplClass.getName() + ", 方法: " + m.getName() + ", HsafRestPath: " + implMethodHsafRestPath);
-                System.err.println("接口: " + serviceInterface.getName() + ", 方法: " + interfaceMethod.getName() + ", RequestMapping: " + requestMapping);
-                isError = true;
-                continue;
-            }
-            String implMethodPath = implMethodHsafRestPath.value();
-            String implMethodFullPath = implPath + methodPath(implMethodPath);
+                String implPath = implHsafRestPath.value().startsWith("tpc") ? classPath(implHsafRestPath.value()) : "tpc/" + classPath(implHsafRestPath.value());
+                String interfacePath = "".equals(feignClient.path()) ? "" : classPath(feignClient.path());
 
-            String interfaceMethodPath = requestMapping.value()[0];
-            String interfaceMethodFullPath = interfacePath + methodPath(interfaceMethodPath);
+                Method[] implMethods = serviceImplClass.getMethods();
+                for (Method m : implMethods) {
+                    HsafRestPath implMethodHsafRestPath = m.getAnnotation(HsafRestPath.class);
 
-            if (!implMethodFullPath.equals(interfaceMethodFullPath)) {
-                System.err.println("实现类: " + serviceImplClass.getName() + ", 方法: " + m.getName() + ", 全路径: " + implMethodFullPath);
-                System.err.println("接口: " + serviceInterface.getName() + ", 方法: " + interfaceMethod.getName() + ", 全路径: " + interfaceMethodFullPath);
-                isError = true;
+                    Method interfaceMethod;
+                    try {
+                        interfaceMethod = serviceInterface.getMethod(m.getName(), m.getParameterTypes());
+                    } catch (NoSuchMethodException | SecurityException ignored) {
+                        continue;
+                    }
+                    RequestMapping requestMapping = AnnotatedElementUtils.findMergedAnnotation(interfaceMethod, RequestMapping.class);
+                    if (implMethodHsafRestPath == null || requestMapping == null) {
+                        System.err.println("实现类: " + serviceImplClass.getName() + ", 方法: " + m.getName() + ", HsafRestPath: " + implMethodHsafRestPath);
+                        System.err.println("接口: " + serviceInterface.getName() + ", 方法: " + interfaceMethod.getName() + ", RequestMapping: " + requestMapping);
+                        isError = true;
+                        continue;
+                    }
+                    String implMethodPath = implMethodHsafRestPath.value();
+                    String implMethodFullPath = methodPath(implPath + methodPath(implMethodPath)).replace("//", "/");
+
+                    String interfaceMethodPath = requestMapping.value()[0];
+                    String interfaceMethodFullPath = methodPath(interfacePath + methodPath(interfaceMethodPath)).replace("//", "/");
+
+                    if (!implMethodFullPath.equals(interfaceMethodFullPath)) {
+                        System.err.println("实现类: " + serviceImplClass.getName() + ", 方法: " + m.getName() + ", 全路径: " + implMethodFullPath);
+                        System.err.println("接口: " + serviceInterface.getName() + ", 方法: " + interfaceMethod.getName() + ", 全路径: " + interfaceMethodFullPath);
+                        isError = true;
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("实现类: " + serviceImplClass.getName() + ", path: " + implHsafRestPath.value());
+                System.err.println("接口: " + serviceInterface.getName() + ", path: " + feignClient.path());
+                throw e;
             }
         }
         if (isError) {
@@ -87,16 +92,37 @@ public class CompareTest {
         }
     }
 
-    private boolean verifyClassAnnotation(HsafRestPath implHsafRestPath, FeignClient feignClient) {
-        return null == implHsafRestPath || feignClient == null;
+    private Class<?> findCandidateInterface(Class<?> serviceImplClass) {
+        if (serviceImplClass.getInterfaces().length == 0) {
+            return null;
+        } else if (serviceImplClass.getInterfaces().length == 1) {
+            return serviceImplClass.getInterfaces()[0].isAnnotationPresent(FeignClient.class) ? serviceImplClass.getInterfaces()[0] : null;
+        } else {
+            for (Class<?> anInterface : serviceImplClass.getInterfaces()) {
+                if (anInterface.isAnnotationPresent(FeignClient.class)) {
+                    return anInterface;
+                }
+            }
+            return null;
+        }
     }
 
     private static String classPath(String value) {
-        value = value.toCharArray()[0] == '/' ? value.substring(1) : value;
-        return value.toCharArray()[value.length() - 1] == '/' ? value.substring(0, value.length() - 1) : value;
+        if ("".equals(value) || null == value) {
+            return value;
+        }
+        if (value.toCharArray().length == 1) {
+            return value.toCharArray()[0] == '/' ? value.substring(1) : value;
+        } else {
+            value = value.toCharArray()[0] == '/' ? value.substring(1) : value;
+            return value.toCharArray()[value.length() - 1] == '/' ? value.substring(0, value.length() - 1) : value;
+        }
     }
 
     private static String methodPath(String value) {
+        if ("".equals(value) || null == value) {
+            return value;
+        }
         return value.toCharArray()[0] == '/' ? value : "/" + value;
     }
 }
