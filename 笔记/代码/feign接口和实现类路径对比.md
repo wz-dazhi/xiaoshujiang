@@ -19,7 +19,7 @@ public class CompareTest {
 
     private void scanPackage(String basePackage) throws Exception {
         // 解析包
-        String packageSearchPath = ResourcePatternResolver.CLASSPATH_ALL_URL_PREFIX + ClassUtils.convertClassNameToResourcePath(basePackage) + "/**/*.class";
+        String packageSearchPath = "classpath*:" + basePackage.replace('.', '/') + "/**/*.class";
         // 获取资源数组
         Resource[] resources = new PathMatchingResourcePatternResolver().getResources(packageSearchPath);
         for (Resource resource : resources) {
