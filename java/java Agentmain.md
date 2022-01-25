@@ -115,7 +115,7 @@ public class AttachTest {
 * 使用jps得到Test的pid, 修改AttachTest.java
 * 运行AttachTest.java
 ![run 运行AttachTest](https://gitee.com/wz-dazhi/pic/raw/master/xiaoshujiang/2022/1/25/1643095993559.png)
-* 手动修改Service.java, 点击idea Rebuild 重新构建class文件
+* 手动修改Service.java, 点击idea Rebuild 重新构建class文件(**==Test在运行的过程中, idea不会自动编译, 对于普通的java项目. springboot的项目可以设置Update classes and resources #F44336==**)
 ![rebuild](https://gitee.com/wz-dazhi/pic/raw/master/xiaoshujiang/2022/1/25/1643096064709.png)
 * 可以看到在不停止Test的情况下, 成功替换了class
 ![run result](https://gitee.com/wz-dazhi/pic/raw/master/xiaoshujiang/2022/1/25/1643096108696.png)
