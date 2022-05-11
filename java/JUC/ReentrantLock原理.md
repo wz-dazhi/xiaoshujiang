@@ -12,7 +12,7 @@ ReentrantLock是一种可重入的互斥锁（也叫排它锁）， 在多个线
 
 # 食用方法
 
-``` javascript
+```java
 class X {
     // 创建一个ReentrantLock对象
     private final ReentrantLock lock = new ReentrantLock();
@@ -61,5 +61,116 @@ public ReentrantLock(boolean fair) {
 }
 ```
 
-## Sync
+## Sync核心原理
+### lock方法
+由FairSync和NonfairSync实现具体加锁逻辑
+```java
+abstract void lock();
+```
+### tryRelease释放锁逻辑
+公共释放锁逻辑。当调用unlock()时，会调用AQS release方法，release方法会调用当前tryRelease方法
+```java
+protected final boolean tryRelease(int releases) {
+    // 获取state变量减去释放数量
+    int c = getState() - releases;
+    // 判断当前线程不持有锁状态，抛出异常（没获取到锁，释放什么锁）
+    if (Thread.currentThread() != getExclusiveOwnerThread())
+        throw new IllegalMonitorStateException();
+    boolean free = false;
+    // c等于0表示释放成功并且表示当前线程没有锁重入，将排它锁线程设置为null
+    if (c == 0) {
+        free = true;
+        setExclusiveOwnerThread(null);
+    }
+    // 设置state变量，由AQS调用
+    setState(c);
+    // 返回free, 告诉AQS是否需要唤醒排队线程。如果返回true，AQS会唤醒后面阻塞的线程
+    return free;
+}
+```
+### nonfairTryAcquire非公平锁获取逻辑
+nonfairTryAcquire方法由NonfairSync调用，但是也属于Sync里面的方法（Doug Lea大爷的写法琢磨不透）
+```java
+final boolean nonfairTryAcquire(int acquires) {
+    final Thread current = Thread.currentThread();
+    // 获取state
+    int c = getState();
+    // 如果c=0,直接CAS抢锁操作，抢锁成功将当前线程设置为持有排它锁
+    if (c == 0) {
+        if (compareAndSetState(0, acquires)) {
+            setExclusiveOwnerThread(current);
+            return true;
+        }
+    }
+    // 判断当前线程是否等于持有排它锁线程（线程重入）
+    else if (current == getExclusiveOwnerThread()) {
+        // 重入次数++
+        int nextc = c + acquires;
+        // 重入次数溢出抛出异常
+        if (nextc < 0) // overflow
+            throw new Error("Maximum lock count exceeded");
+        // 设置重入次数
+        setState(nextc);
+        return true;
+    }
+    // 返回false，获取锁失败。告诉AQS去排队
+    return false;
+}
+```
 
+## FairSync公平锁
+### lock方法
+直接调用AQS acquire方法，acquire方法会调用tryAcquire
+```java
+final void lock() {
+    acquire(1);
+}
+```
+### tryAcquire方法
+尝试获取锁，如果获取失败加入到AQS阻塞队列中进行排队等待。
+```java
+protected final boolean tryAcquire(int acquires) {
+    final Thread current = Thread.currentThread();
+    // 获取state
+    int c = getState();
+    if (c == 0) {
+        // c等于0。判断队列中是否存在排队的线程（如果在这一步之前已经有别的线程竞争锁成功了，并且队列中存在等待线程），如果没有排队的线程，直接CAS state，如果设置成功将当前线程设置为持有锁线程
+        if (!hasQueuedPredecessors() &&
+            compareAndSetState(0, acquires)) {
+            setExclusiveOwnerThread(current);
+            return true;
+        }
+    }
+    // 判断当前线程是否等于持有线程（锁重入）
+    else if (current == getExclusiveOwnerThread()) {
+        // 锁重入++
+        int nextc = c + acquires;
+        if (nextc < 0)
+            throw new Error("Maximum lock count exceeded");
+        // 重新设置state
+        setState(nextc);
+        return true;
+    }
+    // 告诉AQS获取锁失败
+    return false;
+}
+```
+
+## NonfairSync非公众平锁
+### lock方法
+上来直接CAS抢锁，抢锁成功，将当前线程设置为锁持有线程。获取失败调用AQS acquire方法，acquire方法会调用tryAcquire
+```java
+final void lock() {
+    if (compareAndSetState(0, 1))
+        setExclusiveOwnerThread(Thread.currentThread());
+    else
+        acquire(1);
+}
+```
+### tryAcquire方法
+tryAcquire直接调用Sync父类方法nonfairTryAcquire
+```java
+protected final boolean tryAcquire(int acquires) {
+    return nonfairTryAcquire(acquires);
+}
+```
