@@ -70,6 +70,10 @@ abstract void lock();
 ### tryRelease释放锁逻辑
 公共释放锁逻辑。当调用unlock()时，会调用AQS release方法，release方法会调用当前tryRelease方法
 ```java
+public void unlock() {
+    sync.release(1);
+}
+
 protected final boolean tryRelease(int releases) {
     // 获取state变量减去释放数量
     int c = getState() - releases;
@@ -161,9 +165,11 @@ protected final boolean tryAcquire(int acquires) {
 上来直接CAS抢锁，抢锁成功，将当前线程设置为锁持有线程。获取失败调用AQS acquire方法，acquire方法会调用tryAcquire
 ```java
 final void lock() {
+    // 直接CAS抢锁
     if (compareAndSetState(0, 1))
         setExclusiveOwnerThread(Thread.currentThread());
     else
+        // 调用AQS acquire
         acquire(1);
 }
 ```
@@ -174,3 +180,6 @@ protected final boolean tryAcquire(int acquires) {
     return nonfairTryAcquire(acquires);
 }
 ```
+
+# 总结
+ReentrantLock实现了Lock接口，实现了lock unlock等方法。具体的加锁释放锁逻辑又由内部Sync同步器继承AQS实现，AQS提供加锁解锁模板方法，Sync实现了模板方法的加锁解锁逻辑，大部分复用了AQS的相关代码。
